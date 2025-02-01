@@ -1,292 +1,200 @@
 # Standard library imports
 import copy
-import json
-from collections import defaultdict
-from typing import List, Callable, Union
+from typing import List, Optional, Dict, Any, Deque
+from collections import deque
 
 # Package/library imports
-from openai import OpenAI
-
+from scrapybara import Scrapybara
+from scrapybara.tools import BashTool, ComputerTool, EditTool, BrowserTool
+from scrapybara.core.api_error import ApiError
+from scrapybara.types.act import Message
 
 # Local imports
-from .util import function_to_json, debug_print, merge_chunk
-from .types import (
-    Agent,
-    AgentFunction,
-    ChatCompletionMessage,
-    ChatCompletionMessageToolCall,
-    Function,
-    Response,
-    Result,
-)
-
-__CTX_VARS_NAME__ = "context_variables"
-
+from .util import debug_print
+from .types import Agent, Response, get_orchestrator_prompt
+from .tools import HandoffTool
 
 class Swarm:
-    def __init__(self, client=None):
-        if not client:
-            client = OpenAI()
-        self.client = client
-
-    def get_chat_completion(
-        self,
-        agent: Agent,
-        history: List,
-        context_variables: dict,
-        model_override: str,
-        stream: bool,
-        debug: bool,
-    ) -> ChatCompletionMessage:
-        context_variables = defaultdict(str, context_variables)
-        instructions = (
-            agent.instructions(context_variables)
-            if callable(agent.instructions)
-            else agent.instructions
-        )
-        messages = [{"role": "system", "content": instructions}] + history
-        debug_print(debug, "Getting chat completion for...:", messages)
-
-        tools = [function_to_json(f) for f in agent.functions]
-        # hide context_variables from model
-        for tool in tools:
-            params = tool["function"]["parameters"]
-            params["properties"].pop(__CTX_VARS_NAME__, None)
-            if __CTX_VARS_NAME__ in params["required"]:
-                params["required"].remove(__CTX_VARS_NAME__)
-
-        create_params = {
-            "model": model_override or agent.model,
-            "messages": messages,
-            "tools": tools or None,
-            "tool_choice": agent.tool_choice,
-            "stream": stream,
-        }
-
-        if tools:
-            create_params["parallel_tool_calls"] = agent.parallel_tool_calls
-
-        return self.client.chat.completions.create(**create_params)
-
-    def handle_function_result(self, result, debug) -> Result:
-        match result:
-            case Result() as result:
-                return result
-
-            case Agent() as agent:
-                return Result(
-                    value=json.dumps({"assistant": agent.name}),
-                    agent=agent,
-                )
+    def __init__(self, agents: List[Agent], api_key: Optional[str] = None):
+        self.client = Scrapybara(api_key=api_key)
+        self.instances: Dict[str, any] = {}  # Track active Scrapybara instances
+        self.agents = agents
+        
+        orchestrator = [agent for agent in agents if agent.orchestrator]
+        match len(orchestrator):
+            case 0:
+                raise ValueError("Swarm requires exactly one orchestrator agent")
+            case 1:
+                self.orchestrator = orchestrator[0]
             case _:
+                raise ValueError("Cannot have multiple orchestrator agents")
+        
+        self.message_queue: Deque[dict] = deque()  # Queue for inter-agent messages
+
+    def __del__(self):
+        """Clean up all Scrapybara instances"""
+        for instance in self.instances.values():
+            try:
+                instance.browser.stop()
+                instance.stop()
+            except ApiError as e:
+                print(f"Error {e.status_code}: {e.body}")
+        self.instances.clear()
+
+    def _get_or_create_instance(self, agent: Agent) -> any:
+        """Get existing instance or create new one for agent"""
+        if agent.instance in self.instances:
+            return self.instances[agent.instance]
+            
+        try:
+            if agent.instance == "shared":
+                instance = self.client.start_ubuntu(timeout_hours=1)
+            else:
                 try:
-                    return Result(value=str(result))
-                except Exception as e:
-                    error_message = f"Failed to cast response to string: {result}. Make sure agent functions return a string or Result object. Error: {str(e)}"
-                    debug_print(debug, error_message)
-                    raise TypeError(error_message)
+                    instance = next(
+                        inst for inst in self.client.get_instances()
+                        if inst.id == agent.instance
+                    )
+                except StopIteration:
+                    print(f"Instance {agent.instance} not found, falling back to shared instance")
+                    agent.instance = "shared"
+                    # Get or create shared instance
+                    if "shared" in self.instances:
+                        return self.instances["shared"]
+                    instance = self.client.start_ubuntu(timeout_hours=1)
+            # instance.browser.start()
+            self.instances[agent.instance] = instance
+            return instance
+        except ApiError as e:
+            print(f"Error {e.status_code}: {e.body}")
+            raise e
 
-    def handle_tool_calls(
-        self,
-        tool_calls: List[ChatCompletionMessageToolCall],
-        functions: List[AgentFunction],
-        context_variables: dict,
-        debug: bool,
-    ) -> Response:
-        function_map = {f.__name__: f for f in functions}
-        partial_response = Response(
-            messages=[], agent=None, context_variables={})
+    def _setup_agent_tools(self, agent: Agent, instance: any) -> List:
+        """Setup agent tools, ensuring HandoffTool is always included"""
+        handoff_tool = HandoffTool(instance, self, agent)
+        
+        # If user provided tools, add HandoffTool if not already present
+        if agent.tools:
+            if not any(isinstance(tool, HandoffTool) for tool in agent.tools):
+                agent.tools.append(handoff_tool)
+            return agent.tools
+            
+        # Otherwise use all default tools
+        return [
+            BashTool(instance),
+            ComputerTool(instance),
+            EditTool(instance),
+            # BrowserTool(instance),
+            handoff_tool,
+        ]
 
-        for tool_call in tool_calls:
-            name = tool_call.function.name
-            # handle missing tool case, skip to next tool
-            if name not in function_map:
-                debug_print(debug, f"Tool {name} not found in function map.")
-                partial_response.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "tool_name": name,
-                        "content": f"Error: Tool {name} not found.",
-                    }
-                )
+    def process_handoff_requests(self) -> None:
+        """Process any pending handoff requests in the queue"""
+        if not self.message_queue or not self.orchestrator:
+            return
+
+        # Process each request in the queue
+        while self.message_queue:
+            request = self.message_queue.popleft()
+            if request["type"] != "handoff_request":
                 continue
-            args = json.loads(tool_call.function.arguments)
-            debug_print(
-                debug, f"Processing tool call: {name} with arguments {args}")
 
-            func = function_map[name]
-            # pass context_variables to agent functions
-            if __CTX_VARS_NAME__ in func.__code__.co_varnames:
-                args[__CTX_VARS_NAME__] = context_variables
-            raw_result = function_map[name](**args)
-
-            result: Result = self.handle_function_result(raw_result, debug)
-            partial_response.messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "tool_name": name,
-                    "content": result.value,
-                }
-            )
-            partial_response.context_variables.update(result.context_variables)
-            if result.agent:
-                partial_response.agent = result.agent
-
-        return partial_response
-
-    def run_and_stream(
-        self,
-        agent: Agent,
-        messages: List,
-        context_variables: dict = {},
-        model_override: str = None,
-        debug: bool = False,
-        max_turns: int = float("inf"),
-        execute_tools: bool = True,
-    ):
-        active_agent = agent
-        context_variables = copy.deepcopy(context_variables)
-        history = copy.deepcopy(messages)
-        init_len = len(messages)
-
-        while len(history) - init_len < max_turns:
-
-            message = {
-                "content": "",
-                "sender": agent.name,
-                "role": "assistant",
-                "function_call": None,
-                "tool_calls": defaultdict(
-                    lambda: {
-                        "function": {"arguments": "", "name": ""},
-                        "id": "",
-                        "type": "",
-                    }
-                ),
+            # Create a message for the orchestrator agent
+            orchestrator_message = {
+                "role": "user",
+                "content": f"""Handoff request from {request['from_agent']}:
+                Reason: {request['reason']}
+                Task: {request['task_description']}
+                Suggested Agent: {request['suggested_agent'] or 'None'}
+                Requires Response: {request['requires_response']}
+                Additional Context: {request['context']}
+                
+                Available Agents: {[a.name for a in self.agents if not a.orchestrator]}
+                
+                Please decide how to handle this request. You can:
+                1. Assign it to the suggested agent
+                2. Assign it to a different agent
+                3. Tell the original agent to continue
+                4. Put the task on hold pending other work
+                """
             }
 
-            # get completion with current history, agent
-            completion = self.get_chat_completion(
-                agent=active_agent,
-                history=history,
-                context_variables=context_variables,
-                model_override=model_override,
-                stream=True,
-                debug=debug,
+            # Get orchestrator agent's decision
+            response = self.get_act_completion(
+                agent=self.orchestrator,
+                messages=[orchestrator_message],
             )
 
-            yield {"delim": "start"}
-            for chunk in completion:
-                delta = json.loads(chunk.choices[0].delta.json())
-                if delta["role"] == "assistant":
-                    delta["sender"] = active_agent.name
-                yield delta
-                delta.pop("role", None)
-                delta.pop("sender", None)
-                merge_chunk(message, delta)
-            yield {"delim": "end"}
+            # TODO: Process orchestrator agent's response and update task assignments
 
-            message["tool_calls"] = list(
-                message.get("tool_calls", {}).values())
-            if not message["tool_calls"]:
-                message["tool_calls"] = None
-            debug_print(debug, "Received completion:", message)
-            history.append(message)
+    def get_act_completion(
+        self,
+        agent: Agent,
+        messages: Optional[List[Message]] = None,
+        debug: bool = False,
+    ):
+        """Get a completion from the agent"""
+        instance = self._get_or_create_instance(agent)
+        tools = self._setup_agent_tools(agent, instance)
+        
+        # Process any pending handoffs before getting completion
+        if not agent.orchestrator:
+            self.process_handoff_requests()
 
-            if not message["tool_calls"] or not execute_tools:
-                debug_print(debug, "Ending turn.")
-                break
+        # If this is the orchestrator, use the dynamic prompt with agent information
+        system = agent.system
+        if agent.orchestrator:
+            system = get_orchestrator_prompt(self.agents)
 
-            # convert tool_calls to objects
-            tool_calls = []
-            for tool_call in message["tool_calls"]:
-                function = Function(
-                    arguments=tool_call["function"]["arguments"],
-                    name=tool_call["function"]["name"],
-                )
-                tool_call_object = ChatCompletionMessageToolCall(
-                    id=tool_call["id"], function=function, type=tool_call["type"]
-                )
-                tool_calls.append(tool_call_object)
+        response = self.client.act(
+            model=agent.model,
+            tools=tools,
+            system=system,
+            prompt=agent.prompt,
+            messages=messages if messages else [],
+            schema=agent.schema,
+            on_step=agent.on_step,
+        )
 
-            # handle function calls, updating context_variables, and switching agents
-            partial_response = self.handle_tool_calls(
-                tool_calls, active_agent.functions, context_variables, debug
-            )
-            history.extend(partial_response.messages)
-            context_variables.update(partial_response.context_variables)
-            if partial_response.agent:
-                active_agent = partial_response.agent
-
-        yield {
-            "response": Response(
-                messages=history[init_len:],
-                agent=active_agent,
-                context_variables=context_variables,
-            )
-        }
+        return response
 
     def run(
         self,
         agent: Agent,
-        messages: List,
+        messages: Optional[List[Message]] = None,
+        prompt: Optional[str] = None,
         context_variables: dict = {},
-        model_override: str = None,
-        stream: bool = False,
         debug: bool = False,
         max_turns: int = float("inf"),
-        execute_tools: bool = True,
     ) -> Response:
-        if stream:
-            return self.run_and_stream(
-                agent=agent,
-                messages=messages,
-                context_variables=context_variables,
-                model_override=model_override,
-                debug=debug,
-                max_turns=max_turns,
-                execute_tools=execute_tools,
-            )
+        if not agent.orchestrator:
+            raise ValueError("Only the orchestrator agent can be used with run(). Other agents should be coordinated through the orchestrator agent.")
+            
         active_agent = agent
         context_variables = copy.deepcopy(context_variables)
-        history = copy.deepcopy(messages)
+        messages = copy.deepcopy(messages) if messages else []
         init_len = len(messages)
+        all_steps = []
 
-        while len(history) - init_len < max_turns and active_agent:
-
-            # get completion with current history, agent
-            completion = self.get_chat_completion(
+        if prompt:
+            active_agent.prompt = prompt
+        
+        while len(messages) - init_len < max_turns and active_agent:
+            completion = self.get_act_completion(
                 agent=active_agent,
-                history=history,
-                context_variables=context_variables,
-                model_override=model_override,
-                stream=stream,
+                messages=messages,
                 debug=debug,
             )
-            message = completion.choices[0].message
-            debug_print(debug, "Received completion:", message)
-            message.sender = active_agent.name
-            history.append(
-                json.loads(message.model_dump_json())
-            )  # to avoid OpenAI types (?)
-
-            if not message.tool_calls or not execute_tools:
-                debug_print(debug, "Ending turn.")
-                break
-
-            # handle function calls, updating context_variables, and switching agents
-            partial_response = self.handle_tool_calls(
-                message.tool_calls, active_agent.functions, context_variables, debug
-            )
-            history.extend(partial_response.messages)
-            context_variables.update(partial_response.context_variables)
-            if partial_response.agent:
-                active_agent = partial_response.agent
+            
+            debug_print(debug, "Received completion:", completion)
+            messages.extend(completion.messages)
+            all_steps.extend(completion.steps)
 
         return Response(
-            messages=history[init_len:],
+            messages=messages[init_len:],
             agent=active_agent,
             context_variables=context_variables,
+            steps=all_steps,
+            usage=completion.usage if hasattr(completion, 'usage') else None,
+            output=completion.output if hasattr(completion, 'output') else None,
         )

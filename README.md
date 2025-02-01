@@ -1,32 +1,30 @@
 ![Swarm Logo](assets/logo.png)
 
-# Swarm (experimental, educational)
+# Baraswarm
 
-An educational framework exploring ergonomic, lightweight multi-agent orchestration.
+A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
 
-> [!WARNING]
-> Swarm is currently an experimental sample framework intended to explore ergonomic interfaces for multi-agent systems. It is not intended to be used in production, and therefore has no official support. (This also means we will not be reviewing PRs or issues!)
->
-> The primary goal of Swarm is to showcase the handoff & routines patterns explored in the [Orchestrating Agents: Handoffs & Routines](https://cookbook.openai.com/examples/orchestrating_agents) cookbook. It is not meant as a standalone library, and is primarily for educational purposes.
+> [!NOTE]
+> This is a work in progress and is not yet ready for production use. Also, while the API is similar to OpenAI's Swarm, the underlying implementation is fairly different.
 
 ## Install
 
-Requires Python 3.10+
+Requires Python 3.12+
 
 ```shell
-pip install git+ssh://git@github.com/openai/swarm.git
+pip install git+ssh://git@github.com/kcoopermiller/capyswarm.git
 ```
 
 or
 
 ```shell
-pip install git+https://github.com/openai/swarm.git
+pip install git+https://github.com/kcoopermiller/capyswarm.git
 ```
 
 ## Usage
 
 ```python
-from swarm import Swarm, Agent
+from capyswarm import Swarm, Agent
 
 client = Swarm()
 
@@ -79,15 +77,6 @@ It accomplishes this through two primitive abstractions: `Agent`s and **handoffs
 
 These primitives are powerful enough to express rich dynamics between tools and networks of agents, allowing you to build scalable, real-world solutions while avoiding a steep learning curve.
 
-> [!NOTE]
-> Swarm Agents are not related to Assistants in the Assistants API. They are named similarly for convenience, but are otherwise completely unrelated. Swarm is entirely powered by the Chat Completions API and is hence stateless between calls.
-
-## Why Swarm
-
-Swarm explores patterns that are lightweight, scalable, and highly customizable by design. Approaches similar to Swarm are best suited for situations dealing with a large number of independent capabilities and instructions that are difficult to encode into a single prompt.
-
-The Assistants API is a great option for developers looking for fully-hosted threads and built in memory management and retrieval. However, Swarm is an educational resource for developers curious to learn about multi-agent orchestration. Swarm runs (almost) entirely on the client and, much like the Chat Completions API, does not store state between calls.
-
 # Examples
 
 Check out `/examples` for inspiration! Learn more about each one in its README.
@@ -95,9 +84,6 @@ Check out `/examples` for inspiration! Learn more about each one in its README.
 - [`basic`](examples/basic): Simple examples of fundamentals like setup, function calling, handoffs, and context variables
 - [`triage_agent`](examples/triage_agent): Simple example of setting up a basic triage step to hand off to the right agent
 - [`weather_agent`](examples/weather_agent): Simple example of function calling
-- [`airline`](examples/airline): A multi-agent setup for handling different customer service requests in an airline context.
-- [`support_bot`](examples/support_bot): A customer service bot which includes a user interface agent and a help center agent with several tools
-- [`personal_shopper`](examples/personal_shopper): A personal shopping agent that can help with making sales and refunding orders
 
 # Documentation
 
@@ -348,12 +334,3 @@ from swarm.repl import run_demo_loop
 ...
 run_demo_loop(agent, stream=True)
 ```
-
-# Core Contributors
-
-- Ilan Bigio - [ibigio](https://github.com/ibigio)
-- James Hills - [jhills20](https://github.com/jhills20)
-- Shyamal Anadkat - [shyamal-anadkat](https://github.com/shyamal-anadkat)
-- Charu Jaiswal - [charuj](https://github.com/charuj)
-- Colin Jarvis - [colin-openai](https://github.com/colin-openai)
-- Katia Gil Guzman - [katia-openai](https://github.com/katia-openai)

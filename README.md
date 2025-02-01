@@ -1,8 +1,19 @@
 <div id="toc" align="center">
   <ul style="list-style: none">
     <summary>
-      <h1><img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" width="30"> Capyswarm <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" alt="Scrapybara" width="30"></h1>
+      <h1>
+        <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" width="30" >
+        <img src="https://github.com/user-attachments/assets/5f5de974-b6a2-41c3-bf0a-46a308432698" width="30"> 
+        </picture>
+        Capyswarm
+        <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" width="30" >
+        <img src="https://github.com/user-attachments/assets/5dcddbc6-215b-48d4-ab32-16f2437b5d9f" alt="Scrapybara" width="30">
+        </picture>
+      </h1>
     </summary>
+
   </ul>
 </div>
 

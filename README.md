@@ -108,7 +108,7 @@ All interactions between the user and agents are mediated by the `Orchestrator`,
 Check out `/examples` for inspiration! Learn more about each one in its README.
 
 - [`basic`](examples/basic): Simple examples of fundamentals like setup, function calling, handoffs, and context variables
-- [`fireboy_and_watergirl`](examples/fireboy_and_watergirl): An example of two agents playing [Fireboy and Watergirl](https://www.coolmathgames.com/0-fireboy-and-water-girl-in-the-forest-temple)
+- [`fireboy_watergirl`](examples/fireboy_watergirl): An example of two agents playing [Fireboy and Watergirl](https://www.coolmathgames.com/0-fireboy-and-water-girl-in-the-forest-temple)
 
 # Documentation
 

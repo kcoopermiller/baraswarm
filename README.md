@@ -10,7 +10,7 @@
   A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
 </p>
 <p align="center">
-  <a href="https://github.com/kcoopermiller/baraswarm/blob/main/license"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue" /></a>
+  <a href="https://github.com/kcoopermiller/baraswarm/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue" /></a>
   <a href="https://discord.gg/s4bPUVFXqA"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-yellow.svg?logo=discord" /></a>
 </p>
 

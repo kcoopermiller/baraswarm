@@ -1,12 +1,18 @@
-<h1 align="center">
-  <img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" height="80" hspace="50">
-  Baraswarm
-  <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" height="80" hspace="50">
-</h1>
+<div id="toc" align="center">
+  <ul style="list-style: none">
+    <summary>
+      <h1><img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" width="30"> Baraswarm <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" alt="Scrapybara" width="30"></h1>
+    </summary>
+  </ul>
+</div>
 
-
-A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
-
+<p align="center">
+  A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
+</p>
+<p align="center">
+  <a href="https://github.com/kcoopermiller/baraswarm/blob/main/license"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue" /></a>
+  <a href="https://discord.gg/s4bPUVFXqA"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-yellow.svg?logo=discord" /></a>
+</p>
 
 > [!NOTE]
 > This is a work in progress and is not yet ready for production use. Also, while the API is similar to OpenAI's Swarm, the underlying implementation has been almost entirely rewritten.

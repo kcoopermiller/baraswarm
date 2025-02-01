@@ -7,7 +7,7 @@
 </div>
 
 <p align="center">
-  A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
+  A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's <a href="https://github.com/openai/swarm">Swarm</a>
 </p>
 <p align="center">
   <a href="https://github.com/kcoopermiller/baraswarm/blob/main/LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-blue" /></a>
@@ -33,6 +33,7 @@ pip install git+https://github.com/kcoopermiller/capyswarm.git
 
 ## Usage
 
+TODO: this is outdated (from openai swarm), change to capyswarm example
 ```python
 from capyswarm import Swarm, Agent
 
@@ -82,9 +83,9 @@ run_demo_loop(client)
 - [Overview](#overview)
 - [Examples](#examples)
 - [Documentation (WIP)](#documentation)
-  - [Running Swarm](#running-swarm)
+  - [Swarm](#swarm)
   - [Agents](#agents)
-  - [Functions](#functions)
+  - [Tools](#tools)
 - [Evaluations](#evaluations)
 
 # Overview
@@ -114,7 +115,7 @@ Check out `/examples` for inspiration! Learn more about each one in its README.
 > [!IMPORTANT]
 > This section is a work in progress and is mostly copied from the OpenAI Swarm docs.
 
-## Running Swarm
+## Swarm
 
 Start by instantiating a Swarm client (which internally instantiates a `Scrapybara` client).
 
@@ -156,6 +157,14 @@ Once `client.run()` is finished (after potentially multiple calls to agents and 
 
 ## Agents
 
+```python
+from swarm import Agent
+
+agent = Agent(
+   
+)
+```
+
 An `Agent` simply encapsulates a set of `instructions` with a set of `functions` (plus some additional settings below), and has the capability to hand off execution to another `Agent`.
 
 While it's tempting to personify an `Agent` as "someone who does X", it can also be used to represent a very specific workflow or step defined by a set of `instructions` and `functions` (e.g. a set of steps, a complex retrieval, single step of data transformation, etc). This allows `Agent`s to be composed into a network of "agents", "workflows", and "tasks", all represented by the same primitive.
@@ -177,164 +186,10 @@ While it's tempting to personify an `Agent` as "someone who does X", it can also
 | **on_step**       | `Callable`                      | What to print after one iteration                                             | [pretty_print_step](https://github.com/kcoopermiller/baraswarm/blob/main/swarm/util.py#L4) |
 
 
+TODO:
+- explain fields better
 
-ANYTHING BELOW THIS IS NOT DONE
-
-### Instructions
-
-`Agent` `instructions` are directly converted into the `system` prompt of a conversation (as the first message). Only the `instructions` of the active `Agent` will be present at any given time (e.g. if there is an `Agent` handoff, the `system` prompt will change, but the chat history will not.)
-
-```python
-agent = Agent(
-   instructions="You are a helpful agent."
-)
-```
-
-The `instructions` can either be a regular `str`, or a function that returns a `str`. The function can optionally receive a `context_variables` parameter, which will be populated by the `context_variables` passed into `client.run()`.
-
-```python
-def instructions(context_variables):
-   user_name = context_variables["user_name"]
-   return f"Help the user, {user_name}, do whatever they want."
-
-agent = Agent(
-   instructions=instructions
-)
-response = client.run(
-   agent=agent,
-   messages=[{"role":"user", "content": "Hi!"}],
-   context_variables={"user_name":"John"}
-)
-print(response.messages[-1]["content"])
-```
-
-```
-Hi John, how can I assist you today?
-```
-
-## Functions
-
-- Swarm `Agent`s can call python functions directly.
-- Function should usually return a `str` (values will be attempted to be cast as a `str`).
-- If a function returns an `Agent`, execution will be transferred to that `Agent`.
-- If a function defines a `context_variables` parameter, it will be populated by the `context_variables` passed into `client.run()`.
-
-```python
-def greet(context_variables, language):
-   user_name = context_variables["user_name"]
-   greeting = "Hola" if language.lower() == "spanish" else "Hello"
-   print(f"{greeting}, {user_name}!")
-   return "Done"
-
-agent = Agent(
-   functions=[greet]
-)
-
-client.run(
-   agent=agent,
-   messages=[{"role": "user", "content": "Usa greet() por favor."}],
-   context_variables={"user_name": "John"}
-)
-```
-
-```
-Hola, John!
-```
-
-- If an `Agent` function call has an error (missing function, wrong argument, error) an error response will be appended to the chat so the `Agent` can recover gracefully.
-- If multiple functions are called by the `Agent`, they will be executed in that order.
-
-### Handoffs and Updating Context Variables
-
-An `Agent` can hand off to another `Agent` by returning it in a `function`.
-
-```python
-sales_agent = Agent(name="Sales Agent")
-
-def transfer_to_sales():
-   return sales_agent
-
-agent = Agent(functions=[transfer_to_sales])
-
-response = client.run(agent, [{"role":"user", "content":"Transfer me to sales."}])
-print(response.agent.name)
-```
-
-```
-Sales Agent
-```
-
-It can also update the `context_variables` by returning a more complete `Result` object. This can also contain a `value` and an `agent`, in case you want a single function to return a value, update the agent, and update the context variables (or any subset of the three).
-
-```python
-sales_agent = Agent(name="Sales Agent")
-
-def talk_to_sales():
-   print("Hello, World!")
-   return Result(
-       value="Done",
-       agent=sales_agent,
-       context_variables={"department": "sales"}
-   )
-
-agent = Agent(functions=[talk_to_sales])
-
-response = client.run(
-   agent=agent,
-   messages=[{"role": "user", "content": "Transfer me to sales"}],
-   context_variables={"user_name": "John"}
-)
-print(response.agent.name)
-print(response.context_variables)
-```
-
-```
-Sales Agent
-{'department': 'sales', 'user_name': 'John'}
-```
-
-> [!NOTE]
-> If an `Agent` calls multiple functions to hand-off to an `Agent`, only the last handoff function will be used.
-
-### Function Schemas
-
-Swarm automatically converts functions into a JSON Schema that is passed into Chat Completions `tools`.
-
-- Docstrings are turned into the function `description`.
-- Parameters without default values are set to `required`.
-- Type hints are mapped to the parameter's `type` (and default to `string`).
-- Per-parameter descriptions are not explicitly supported, but should work similarly if just added in the docstring. (In the future docstring argument parsing may be added.)
-
-```python
-def greet(name, age: int, location: str = "New York"):
-   """Greets the user. Make sure to get their name and age before calling.
-
-   Args:
-      name: Name of the user.
-      age: Age of the user.
-      location: Best place on earth.
-   """
-   print(f"Hello {name}, glad you are {age} in {location}!")
-```
-
-```javascript
-{
-   "type": "function",
-   "function": {
-      "name": "greet",
-      "description": "Greets the user. Make sure to get their name and age before calling.\n\nArgs:\n   name: Name of the user.\n   age: Age of the user.\n   location: Best place on earth.",
-      "parameters": {
-         "type": "object",
-         "properties": {
-            "name": {"type": "string"},
-            "age": {"type": "integer"},
-            "location": {"type": "string"}
-         },
-         "required": ["name", "age"]
-      }
-   }
-}
-```
+## Tools
 
 # Evaluations
 

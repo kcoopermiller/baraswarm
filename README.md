@@ -1,11 +1,15 @@
-![Swarm Logo](assets/logo.png)
+<h1 align="center">
+  <img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" height="80" hspace="50">
+  Baraswarm
+  <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" height="80" hspace="50">
+</h1>
 
-# Baraswarm
 
 A lightweight multi-agent orchestration framework for Scrapybara computer-use agents built on top of OpenAI's Swarm.
 
+
 > [!NOTE]
-> This is a work in progress and is not yet ready for production use. Also, while the API is similar to OpenAI's Swarm, the underlying implementation is fairly different.
+> This is a work in progress and is not yet ready for production use. Also, while the API is similar to OpenAI's Swarm, the underlying implementation has been almost entirely rewritten.
 
 ## Install
 

@@ -1,7 +1,7 @@
 <div id="toc" align="center">
   <ul style="list-style: none">
     <summary>
-      <h1><img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" width="30"> Baraswarm <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" alt="Scrapybara" width="30"></h1>
+      <h1><img src="https://github.com/user-attachments/assets/5c96e78f-b3ea-4714-beaf-e2afcfc1a405" width="30"> Capyswarm <img src="https://github.com/user-attachments/assets/04379257-2e36-4e09-b084-65257f132eac" alt="Scrapybara" width="30"></h1>
     </summary>
   </ul>
 </div>
@@ -67,41 +67,56 @@ New paths converge gracefully,
 What can I assist?
 ```
 
+### REPL
+
+Use the `run_demo_loop` to run a REPL on your command line.
+
+```python
+from capyswarm.repl import run_demo_loop
+...
+run_demo_loop(client)
+```
+
 ## Table of Contents
 
 - [Overview](#overview)
 - [Examples](#examples)
-- [Documentation](#documentation)
+- [Documentation (WIP)](#documentation)
   - [Running Swarm](#running-swarm)
   - [Agents](#agents)
   - [Functions](#functions)
-  - [Streaming](#streaming)
 - [Evaluations](#evaluations)
-- [Utils](#utils)
 
 # Overview
 
 Swarm focuses on making agent **coordination** and **execution** lightweight, highly controllable, and easily testable.
 
-It accomplishes this through two primitive abstractions: `Agent`s and **handoffs**. An `Agent` encompasses `instructions` and `tools`, and can at any point choose to hand off a conversation to another `Agent`.
+In the OpenAI Swarm framework, this is achieved through two core abstractions: `Agent`s and **handoffs**. An `Agent` encompasses `instructions` and `tools`, and can at any point choose to hand off a conversation to another `Agent`. Handoffs occur synchronously, ensuring controlled transitions between agents.
 
-These primitives are powerful enough to express rich dynamics between tools and networks of agents, allowing you to build scalable, real-world solutions while avoiding a steep learning curve.
+Capyswarm introduces an **orchestrator-worker** architecture. Instead of direct agent-to-agent handoffs, all task delegation is routed through a central `Orchestrator`. The `Orchestrator` decomposes high-level tasks, assigns subtasks to individual agents, and manages asynchronous execution. Agents can still transfer tasks to others, but only via the orchestrator, ensuring structured coordination.
+
+Additionally, agents can retrieve relevant information about each other's progress, enabling more informed decision-making. Once all assigned tasks are completed, the Orchestrator aggregates the results and determines whether the user's request has been successfully fulfilled.
+
+All interactions between the user and agents are mediated by the `Orchestrator`, maintaining a streamlined and coherent workflow.
+
+![Swarm Diagram](https://www.anthropic.com/_next/image?url=https%3A%2F%2Fwww-cdn.anthropic.com%2Fimages%2F4zrzovbb%2Fwebsite%2F8985fc683fae4780fb34eab1365ab78c7e51bc8e-2401x1000.png&w=3840&q=75)  
+*Image source: [Building effective agents](https://www.anthropic.com/research/building-effective-agents)*
 
 # Examples
 
 Check out `/examples` for inspiration! Learn more about each one in its README.
 
 - [`basic`](examples/basic): Simple examples of fundamentals like setup, function calling, handoffs, and context variables
-- [`triage_agent`](examples/triage_agent): Simple example of setting up a basic triage step to hand off to the right agent
-- [`weather_agent`](examples/weather_agent): Simple example of function calling
+- [`fireboy_and_watergirl`](examples/fireboy_and_watergirl): An example of two agents playing [Fireboy and Watergirl](https://www.coolmathgames.com/0-fireboy-and-water-girl-in-the-forest-temple)
 
 # Documentation
 
-![Swarm Diagram](assets/swarm_diagram.png)
+> [!IMPORTANT]
+> This section is a work in progress and is mostly copied from the OpenAI Swarm docs.
 
 ## Running Swarm
 
-Start by instantiating a Swarm client (which internally just instantiates an `OpenAI` client).
+Start by instantiating a Swarm client (which internally instantiates a `Scrapybara` client).
 
 ```python
 from swarm import Swarm
@@ -111,28 +126,21 @@ client = Swarm()
 
 ### `client.run()`
 
-Swarm's `run()` function is analogous to the `chat.completions.create()` function in the Chat Completions API – it takes `messages` and returns `messages` and saves no state between calls. Importantly, however, it also handles Agent function execution, hand-offs, context variable references, and can take multiple turns before returning to the user.
+Swarm's `run()` function is analogous to the `client.act()` function in the [Scrapybara Act SDK](https://docs.scrapybara.com/act-sdk) – it takes a `model` that serves as the base LLM for the agent, `tools` that enable agents to interact with the computer, a `prompt` that should denote the agent’s current objective, and starts an interaction loop that continues until the agent achieves the user's objective.
 
-At its core, Swarm's `client.run()` implements the following loop:
-
-1. Get a completion from the current Agent
-2. Execute tool calls and append results
-3. Switch Agent if necessary
-4. Update context variables, if necessary
-5. If no new function calls, return
+At its core, Swarm's `client.run()` implements the following loop: TODO
 
 #### Arguments
 
 | Argument              | Type    | Description                                                                                                                                            | Default        |
 | --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
 | **agent**             | `Agent` | The (initial) agent to be called.                                                                                                                      | (required)     |
-| **messages**          | `List`  | A list of message objects, identical to [Chat Completions `messages`](https://platform.openai.com/docs/api-reference/chat/create#chat-create-messages) | (required)     |
-| **context_variables** | `dict`  | A dictionary of additional context variables, available to functions and Agent instructions                                                            | `{}`           |
-| **max_turns**         | `int`   | The maximum number of conversational turns allowed                                                                                                     | `float("inf")` |
-| **model_override**    | `str`   | An optional string to override the model being used by an Agent                                                                                        | `None`         |
-| **execute_tools**     | `bool`  | If `False`, interrupt execution and immediately returns `tool_calls` message when an Agent tries to call a function                                    | `True`         |
-| **stream**            | `bool`  | If `True`, enables streaming responses                                                                                                                 | `False`        |
+| **prompt**            | `str`   | Objective                                                                                                                                              | (required)     |
 | **debug**             | `bool`  | If `True`, enables debug logging                                                                                                                       | `False`        |
+
+
+
+**OUTDATED**
 
 Once `client.run()` is finished (after potentially multiple calls to agents and tools) it will return a `Response` containing all the relevant updated state. Specifically, the new `messages`, the last `Agent` to be called, and the most up-to-date `context_variables`. You can pass these values (plus new user messages) in to your next execution of `client.run()` to continue the interaction where it left off – much like `chat.completions.create()`. (The `run_demo_loop` function implements an example of a full execution loop in `/swarm/repl/repl.py`.)
 
@@ -144,6 +152,8 @@ Once `client.run()` is finished (after potentially multiple calls to agents and 
 | **agent**             | `Agent` | The last agent to handle a message.                                                                                                                                                                                                                                          |
 | **context_variables** | `dict`  | The same as the input variables, plus any changes.                                                                                                                                                                                                                           |
 
+**OUTDATED_END**
+
 ## Agents
 
 An `Agent` simply encapsulates a set of `instructions` with a set of `functions` (plus some additional settings below), and has the capability to hand off execution to another `Agent`.
@@ -152,13 +162,23 @@ While it's tempting to personify an `Agent` as "someone who does X", it can also
 
 ## `Agent` Fields
 
-| Field            | Type                     | Description                                                                   | Default                      |
-| ---------------- | ------------------------ | ----------------------------------------------------------------------------- | ---------------------------- |
-| **name**         | `str`                    | The name of the agent.                                                        | `"Agent"`                    |
-| **model**        | `str`                    | The model to be used by the agent.                                            | `"gpt-4o"`                   |
-| **instructions** | `str` or `func() -> str` | Instructions for the agent, can be a string or a callable returning a string. | `"You are a helpful agent."` |
-| **functions**    | `List`                   | A list of functions that the agent can call.                                  | `[]`                         |
-| **tool_choice**  | `str`                    | The tool choice for the agent, if any.                                        | `None`                       |
+| Field            | Type                             | Description                                                                   | Default                                          |
+| ---------------- | -------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------ |
+| **name**         | `str`                            | The name of the agent.                                                        | `"Agent"`                                        |
+| **instance**     | `str`                            | The Scrapybara instance this agent uses.                                      | `"shared"`                                       |
+| **color**        | `str`                            | Terminal Color                                                                | `random.choice(["91","92","93","94","95","96"])` |
+| **orchestrator** | `bool`                           | True if this agent is orchestrator                                            | `False`                                          |
+| **model**        | `scrapybara.anthropic.Anthropic` | The model to be used by the agent.                                            | `scrapybara.anthropic.Anthropic`                 |
+| **tool**         | `list`                           | List of tools available to agent                                              | check [_setup_agent_tools](https://github.com/kcoopermiller/baraswarm/blob/main/swarm/core.py#L75)                                                                                                                 |
+| **system**        | `str`                           | System prompt                                                                 | `scrapybara.prompts.UBUNTU_SYSTEM_PROMPT`        |
+| **prompt**        | `str`                           | Description of preferred Agent objective                                      | `None`                                           |
+| **messages**      | `List`                          | A list of `scrapybara.types.act.Message` objects                              | `None`                                           |
+| **schema**        | `Any`                           | [Structured output](https://docs.scrapybara.com/act-sdk#structured-output)    | `None`                                           |
+| **on_step**       | `Callable`                      | What to print after one iteration                                             | [pretty_print_step](https://github.com/kcoopermiller/baraswarm/blob/main/swarm/util.py#L4) |
+
+
+
+ANYTHING BELOW THIS IS NOT DONE
 
 ### Instructions
 
@@ -316,31 +336,7 @@ def greet(name, age: int, location: str = "New York"):
 }
 ```
 
-## Streaming
-
-```python
-stream = client.run(agent, messages, stream=True)
-for chunk in stream:
-   print(chunk)
-```
-
-Uses the same events as [Chat Completions API streaming](https://platform.openai.com/docs/api-reference/streaming). See `process_and_print_streaming_response` in `/swarm/repl/repl.py` as an example.
-
-Two new event types have been added:
-
-- `{"delim":"start"}` and `{"delim":"end"}`, to signal each time an `Agent` handles a single message (response or function call). This helps identify switches between `Agent`s.
-- `{"response": Response}` will return a `Response` object at the end of a stream with the aggregated (complete) response, for convenience.
-
 # Evaluations
 
-Evaluations are crucial to any project, and we encourage developers to bring their own eval suites to test the performance of their swarms. For reference, we have some examples for how to eval swarm in the `airline`, `weather_agent` and `triage_agent` quickstart examples. See the READMEs for more details.
+TODO: create example evals. Check `weather_agent` and `triage_agent` in OpenAI Swarm for example
 
-# Utils
-
-Use the `run_demo_loop` to test out your swarm! This will run a REPL on your command line. Supports streaming.
-
-```python
-from swarm.repl import run_demo_loop
-...
-run_demo_loop(agent, stream=True)
-```

@@ -12,7 +12,7 @@ from scrapybara.types.act import Message
 # Local imports
 from .util import debug_print
 from .types import Agent, Response, get_orchestrator_prompt
-from .tools import HandoffTool
+from .tools import HandoffTool, OrchestratorSchema
 
 class Swarm:
     def __init__(self, agents: List[Agent], api_key: Optional[str] = None):
@@ -26,6 +26,8 @@ class Swarm:
                 raise ValueError("Swarm requires exactly one orchestrator agent")
             case 1:
                 self.orchestrator = orchestrator[0]
+                self.orchestrator.schema = OrchestratorSchema
+                self.orchestrator.system = get_orchestrator_prompt(self.agents)
             case _:
                 raise ValueError("Cannot have multiple orchestrator agents")
         
@@ -69,6 +71,7 @@ class Swarm:
             print(f"Error {e.status_code}: {e.body}")
             raise e
 
+    # TODO: change to use new tool system
     def _setup_agent_tools(self, agent: Agent, instance: any) -> List:
         """Setup agent tools, ensuring HandoffTool is always included"""
         handoff_tool = HandoffTool(instance, self, agent)
@@ -88,45 +91,6 @@ class Swarm:
             handoff_tool,
         ]
 
-    def process_handoff_requests(self) -> None:
-        """Process any pending handoff requests in the queue"""
-        if not self.message_queue or not self.orchestrator:
-            return
-
-        # Process each request in the queue
-        while self.message_queue:
-            request = self.message_queue.popleft()
-            if request["type"] != "handoff_request":
-                continue
-
-            # Create a message for the orchestrator agent
-            orchestrator_message = {
-                "role": "user",
-                "content": f"""Handoff request from {request['from_agent']}:
-                Reason: {request['reason']}
-                Task: {request['task_description']}
-                Suggested Agent: {request['suggested_agent'] or 'None'}
-                Requires Response: {request['requires_response']}
-                Additional Context: {request['context']}
-                
-                Available Agents: {[a.name for a in self.agents if not a.orchestrator]}
-                
-                Please decide how to handle this request. You can:
-                1. Assign it to the suggested agent
-                2. Assign it to a different agent
-                3. Tell the original agent to continue
-                4. Put the task on hold pending other work
-                """
-            }
-
-            # Get orchestrator agent's decision
-            response = self.get_act_completion(
-                agent=self.orchestrator,
-                messages=[orchestrator_message],
-            )
-
-            # TODO: Process orchestrator agent's response and update task assignments
-
     def get_act_completion(
         self,
         agent: Agent,
@@ -136,25 +100,26 @@ class Swarm:
         """Get a completion from the agent"""
         instance = self._get_or_create_instance(agent)
         tools = self._setup_agent_tools(agent, instance)
-        
-        # Process any pending handoffs before getting completion
-        if not agent.orchestrator:
-            self.process_handoff_requests()
-
-        # If this is the orchestrator, use the dynamic prompt with agent information
-        system = agent.system
-        if agent.orchestrator:
-            system = get_orchestrator_prompt(self.agents)
 
         response = self.client.act(
             model=agent.model,
             tools=tools,
-            system=system,
+            system=agent.system,
             prompt=agent.prompt,
             messages=messages if messages else [],
             schema=agent.schema,
             on_step=agent.on_step,
         )
+
+        # If this is the orchestrator and we got a plan, update agent prompts
+        if agent.orchestrator and response.output:
+            for assignment in response.output.task_assignments:
+                target_agent = next(
+                    (a for a in self.agents if a.name == assignment.agent_name),
+                    None
+                )
+                if target_agent:
+                    target_agent.prompt = assignment.prompt
 
         return response
 
@@ -179,6 +144,7 @@ class Swarm:
         if prompt:
             active_agent.prompt = prompt
         
+        # TODO: change loop so it stops when the orchestrator has decided to stop
         while len(messages) - init_len < max_turns and active_agent:
             completion = self.get_act_completion(
                 agent=active_agent,
@@ -187,8 +153,9 @@ class Swarm:
             )
             
             debug_print(debug, "Received completion:", completion)
-            messages.extend(completion.messages)
-            all_steps.extend(completion.steps)
+            # TODO: update agent switching and async handling
+            # messages.extend(completion.messages)
+            # all_steps.extend(completion.steps)
 
         return Response(
             messages=messages[init_len:],

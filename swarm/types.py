@@ -41,21 +41,6 @@ class Response(BaseModel):
     usage: Optional[dict] = None  # Track token usage
     output: Optional[Any] = None  # For schema-based structured output
 
-class Result(BaseModel):
-    """
-    Encapsulates the possible return values for an agent function.
-
-    Attributes:
-        value (str): The result value as a string.
-        agent (Agent): The agent instance, if applicable.
-        context_variables (dict): A dictionary of context variables.
-        steps (List): Scrapybara execution steps if any.
-    """
-    value: str = ""
-    agent: Optional[Agent] = None
-    context_variables: dict = {}
-    steps: List = []
-
 def get_orchestrator_prompt(agents: List['Agent']) -> str:
     agent_info = "\n".join([
         f"  - {a.name}: {a.prompt}"
@@ -98,5 +83,12 @@ def get_orchestrator_prompt(agents: List['Agent']) -> str:
 <AGENTS>
 {agent_info}
 </AGENTS>
+
+For each task, you must output a structured plan using the Orchestrator schema, which includes:
+- The overall task description
+- Specific task assignments for each agent, including:
+  * The exact prompt/instructions
+  * Priority level
+- Any additional execution notes or coordination requirements
 
 Remember: You are the orchestrator of the swarm. Your decisions should optimize for efficient task completion while maintaining clear communication and coordination between all agents."""
